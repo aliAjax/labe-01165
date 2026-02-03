@@ -1,0 +1,100 @@
+# ============ 编译产物 ============
+# C++ 编译产物
+*.o
+*.obj
+*.exe
+*.out
+*.app
+*.dSYM/
+
+# 可执行文件
+utility_system
+backend/utility_system
+
+# ============ IDE 和编辑器 ============
+# Visual Studio Code
+.vscode/
+*.code-workspace
+
+# JetBrains IDEs (CLion, etc.)
+.idea/
+*.iml
+cmake-build-*/
+
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+
+# Visual Studio
+.vs/
+*.vcxproj.user
+*.suo
+*.user
+*.sln.docstates
+
+# ============ 操作系统 ============
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+
+# ============ Docker ============
+# Docker 本地构建缓存
+.docker/
+
+# ============ 构建目录 ============
+build/
+bin/
+lib/
+out/
+target/
+
+# ============ 日志文件 ============
+*.log
+logs/
+
+# ============ 临时文件 ============
+*.tmp
+*.temp
+*.swp
+*.swo
+*.bak
+*.backup
+
+# ============ 依赖和包管理 ============
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile.cmake
+
+# ============ 其他 ============
+# 环境变量文件（包含敏感信息）
+.env
+.env.local
+.env.*.local
+
+# 私钥和证书
+*.pem
+*.key
+*.crt
+
+# 数据库文件
+*.db
+*.sqlite
+*.sqlite3

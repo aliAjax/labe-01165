@@ -1,0 +1,20 @@
+services:
+  # 水电煤气管理系统后端服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: utility-management-system
+    image: utility-management-system:latest
+    # 交互式终端程序需要tty和stdin_open
+    stdin_open: true
+    tty: true
+    # 启动后保持容器运行，等待用户通过 docker exec 进入
+    command: /bin/sh -c "echo '容器已启动，请使用以下命令运行程序：' && echo 'docker exec -it utility-management-system ./utility_system' && tail -f /dev/null"
+    restart: unless-stopped
+
+# 网络配置
+networks:
+  default:
+    name: utility-network
+    driver: bridge
