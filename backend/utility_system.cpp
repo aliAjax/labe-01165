@@ -3,11 +3,16 @@
 #include <algorithm>
 #include <ctime>
 #include <limits>
+#include <fstream>
 
 // 辅助函数：安全读取整数输入
 int safeInputInt() {
     int value;
     while (!(cin >> value)) {
+        if (cin.eof()) {
+            cout << "\n输入流结束，程序退出。" << endl;
+            exit(0);
+        }
         cin.clear();  // 清除错误状态
         cin.ignore(numeric_limits<streamsize>::max(), '\n');  // 清除缓冲区
         cout << "输入无效，请输入数字: ";
@@ -942,7 +947,8 @@ void UtilityManagementSystem::showMainMenu() {
     cout << "║  3. 费用查询                                              ║" << endl;
     cout << "║  4. 缴费管理                                              ║" << endl;
     cout << "║  5. 收费标准                                              ║" << endl;
-    cout << "║  6. 初始化测试数据                                        ║" << endl;
+    cout << "║  6. 统计报表                                              ║" << endl;
+    cout << "║  7. 初始化测试数据                                        ║" << endl;
     cout << "║  0. 退出系统                                              ║" << endl;
     cout << "╚══════════════════════════════════════════════════════════╝" << endl;
     cout << "请选择: ";
@@ -1057,12 +1063,313 @@ void UtilityManagementSystem::run() {
                     if (modify == 1) modifyPriceStandard();
                 }
                 break;
-            case 6: initTestData(); break;
+            case 6: showStatisticsMenu(); break;
+            case 7: initTestData(); break;
             case 0:
                 cout << "\n感谢使用，再见！" << endl;
                 break;
             default:
                 cout << "无效选择，请重新输入！" << endl;
+        }
+    } while (choice != 0);
+}
+
+// ==================== 统计报表功能实现 ====================
+
+// 辅助函数：验证日期格式是否为 YYYY-MM-DD
+bool isValidDateFormat(const string& date) {
+    if (date.length() != 10) return false;
+    if (date[4] != '-' || date[7] != '-') return false;
+    
+    // 检查年份部分是否为数字
+    for (int i = 0; i < 4; i++) {
+        if (!isdigit(date[i])) return false;
+    }
+    
+    // 检查月份部分是否为数字
+    for (int i = 5; i < 7; i++) {
+        if (!isdigit(date[i])) return false;
+    }
+    
+    // 检查日期部分是否为数字
+    for (int i = 8; i < 10; i++) {
+        if (!isdigit(date[i])) return false;
+    }
+    
+    // 验证月份范围
+    int month = stoi(date.substr(5, 2));
+    if (month < 1 || month > 12) return false;
+    
+    return true;
+}
+
+string UtilityManagementSystem::getPeriodKey(const string& date, StatisticsPeriod period) {
+    // 验证日期格式
+    if (!isValidDateFormat(date)) {
+        return "unknown";
+    }
+    
+    // 日期格式: YYYY-MM-DD
+    string year = date.substr(0, 4);
+    string month = date.substr(5, 2);
+    
+    switch (period) {
+        case StatisticsPeriod::MONTHLY:
+            return year + "-" + month;
+        case StatisticsPeriod::QUARTERLY: {
+            int m = stoi(month);
+            int quarter = (m - 1) / 3 + 1;
+            return year + "-Q" + to_string(quarter);
+        }
+        case StatisticsPeriod::YEARLY:
+            return year;
+        default:
+            return year + "-" + month;
+    }
+}
+
+// 辅助函数：验证月度周期键格式是否为 YYYY-MM
+bool isValidMonthlyPeriodKey(const string& periodKey) {
+    if (periodKey.length() != 7) return false;
+    if (periodKey[4] != '-') return false;
+    
+    // 检查年份部分是否为数字
+    for (int i = 0; i < 4; i++) {
+        if (!isdigit(periodKey[i])) return false;
+    }
+    
+    // 检查月份部分是否为数字
+    for (int i = 5; i < 7; i++) {
+        if (!isdigit(periodKey[i])) return false;
+    }
+    
+    // 验证月份范围
+    int month = stoi(periodKey.substr(5, 2));
+    if (month < 1 || month > 12) return false;
+    
+    return true;
+}
+
+// 辅助函数：验证季度周期键格式是否为 YYYY-QN
+bool isValidQuarterlyPeriodKey(const string& periodKey) {
+    if (periodKey.length() != 7) return false;  // 格式：YYYY-QN (7个字符)
+    if (periodKey[4] != '-' || periodKey[5] != 'Q') return false;
+    
+    // 检查年份部分是否为数字
+    for (int i = 0; i < 4; i++) {
+        if (!isdigit(periodKey[i])) return false;
+    }
+    
+    // 检查季度部分是否为数字
+    if (!isdigit(periodKey[6])) return false;
+    
+    // 验证季度范围
+    int quarter = periodKey[6] - '0';
+    if (quarter < 1 || quarter > 4) return false;
+    
+    return true;
+}
+
+// 辅助函数：验证年度周期键格式是否为 YYYY
+bool isValidYearlyPeriodKey(const string& periodKey) {
+    if (periodKey.length() != 4) return false;
+    
+    // 检查年份部分是否为数字
+    for (int i = 0; i < 4; i++) {
+        if (!isdigit(periodKey[i])) return false;
+    }
+    
+    return true;
+}
+
+string UtilityManagementSystem::getPeriodDescription(const string& periodKey, StatisticsPeriod period) {
+    // 处理未知周期
+    if (periodKey == "unknown") {
+        return "未知周期";
+    }
+    
+    switch (period) {
+        case StatisticsPeriod::MONTHLY:
+            if (isValidMonthlyPeriodKey(periodKey)) {
+                return periodKey.substr(0, 4) + "年" + periodKey.substr(5, 2) + "月";
+            }
+            break;
+        case StatisticsPeriod::QUARTERLY:
+            if (isValidQuarterlyPeriodKey(periodKey)) {
+                string year = periodKey.substr(0, 4);
+                string q = periodKey.substr(6, 1);
+                return year + "年第" + q + "季度";
+            }
+            break;
+        case StatisticsPeriod::YEARLY:
+            if (isValidYearlyPeriodKey(periodKey)) {
+                return periodKey + "年度";
+            }
+            break;
+    }
+    
+    // 格式不正确时返回原始键
+    return periodKey;
+}
+
+void UtilityManagementSystem::generateStatistics(StatisticsPeriod period) {
+    map<string, StatisticsData> statsMap;
+    
+    // 统计水表数据
+    for (auto record : waterRecords) {
+        string periodKey = getPeriodKey(record->getCurrentReadDate(), period);
+        statsMap[periodKey].period = periodKey;
+        statsMap[periodKey].totalWaterUsage += record->getUsage();
+        statsMap[periodKey].totalWaterFee += record->getFee();
+        statsMap[periodKey].recordCount++;
+    }
+    
+    // 统计电表数据
+    for (auto record : electricRecords) {
+        string periodKey = getPeriodKey(record->getCurrentReadDate(), period);
+        statsMap[periodKey].period = periodKey;
+        statsMap[periodKey].totalElectricUsage += record->getUsage();
+        statsMap[periodKey].totalElectricFee += record->getFee();
+        statsMap[periodKey].recordCount++;
+    }
+    
+    // 统计煤气表数据
+    for (auto record : gasRecords) {
+        string periodKey = getPeriodKey(record->getCurrentReadDate(), period);
+        statsMap[periodKey].period = periodKey;
+        statsMap[periodKey].totalGasUsage += record->getUsage();
+        statsMap[periodKey].totalGasFee += record->getFee();
+        statsMap[periodKey].recordCount++;
+    }
+    
+    if (statsMap.empty()) {
+        cout << "\n暂无统计数据！" << endl;
+        return;
+    }
+    
+    // 显示统计报表
+    displayStatistics(statsMap, period);
+    
+    // 询问是否导出到文件
+    cout << "\n是否将统计报表导出到文件？(1-是, 0-否): ";
+    int exportChoice = safeInputInt();
+    if (exportChoice == 1) {
+        exportStatisticsToFile(statsMap, period);
+    }
+}
+
+void UtilityManagementSystem::displayStatistics(const map<string, StatisticsData>& stats, StatisticsPeriod period) {
+    string periodName;
+    switch (period) {
+        case StatisticsPeriod::MONTHLY: periodName = "月度"; break;
+        case StatisticsPeriod::QUARTERLY: periodName = "季度"; break;
+        case StatisticsPeriod::YEARLY: periodName = "年度"; break;
+    }
+    
+    cout << "\n╔════════════════════════════════════════════════════════════════════════════════════════════════════╗" << endl;
+    cout << "║                                    " << periodName << "用量统计报表                                         ║" << endl;
+    cout << "╠════════════════╤═══════════════╤═══════════════╤═══════════════╤══════════════════════════════════╣" << endl;
+    cout << "║   统计周期     │    用水量(吨)  │    用电量(度)  │   用气量(m³)  │   水费(元)  │  电费(元)  │  煤气费(元) │" << endl;
+    cout << "╠════════════════╪═══════════════╪═══════════════╪═══════════════╪═════════════╪════════════╪═════════════╣" << endl;
+    
+    double totalWater = 0, totalElectric = 0, totalGas = 0;
+    double totalWaterFee = 0, totalElectricFee = 0, totalGasFee = 0;
+    
+    for (auto& pair : stats) {
+        const StatisticsData& data = pair.second;
+        string periodDesc = getPeriodDescription(pair.first, period);
+        
+        cout << "║ " << setw(12) << left << periodDesc
+             << " │ " << setw(13) << right << fixed << setprecision(2) << data.totalWaterUsage
+             << " │ " << setw(13) << data.totalElectricUsage
+             << " │ " << setw(13) << data.totalGasUsage
+             << " │ " << setw(11) << data.totalWaterFee
+             << " │ " << setw(10) << data.totalElectricFee
+             << " │ " << setw(11) << data.totalGasFee << " │" << endl;
+        
+        totalWater += data.totalWaterUsage;
+        totalElectric += data.totalElectricUsage;
+        totalGas += data.totalGasUsage;
+        totalWaterFee += data.totalWaterFee;
+        totalElectricFee += data.totalElectricFee;
+        totalGasFee += data.totalGasFee;
+    }
+    
+    cout << "╠════════════════╪═══════════════╪═══════════════╪═══════════════╪═════════════╪════════════╪═════════════╣" << endl;
+    cout << "║    总计        │ " << setw(13) << right << totalWater
+         << " │ " << setw(13) << totalElectric
+         << " │ " << setw(13) << totalGas
+         << " │ " << setw(11) << totalWaterFee
+         << " │ " << setw(10) << totalElectricFee
+         << " │ " << setw(11) << totalGasFee << " │" << endl;
+    cout << "╚════════════════╧═══════════════╧═══════════════╧═══════════════╧═════════════╧════════════╧═════════════╝" << endl;
+}
+
+void UtilityManagementSystem::exportStatisticsToFile(const map<string, StatisticsData>& stats, StatisticsPeriod period) {
+    string periodName;
+    switch (period) {
+        case StatisticsPeriod::MONTHLY: periodName = "monthly"; break;
+        case StatisticsPeriod::QUARTERLY: periodName = "quarterly"; break;
+        case StatisticsPeriod::YEARLY: periodName = "yearly"; break;
+    }
+    
+    string filename = periodName + "_statistics_" + getCurrentDate() + ".csv";
+    
+    ofstream file(filename);
+    if (!file.is_open()) {
+        cout << "无法创建文件：" << filename << endl;
+        return;
+    }
+    
+    // 写入BOM以支持Excel中文显示
+    file << "\xEF\xBB\xBF";
+    
+    // 写入表头
+    file << "统计周期,用水量(吨),水费(元),用电量(度),电费(元),用气量(m³),煤气费(元)" << endl;
+    
+    // 写入数据
+    for (auto& pair : stats) {
+        const StatisticsData& data = pair.second;
+        string periodDesc = getPeriodDescription(pair.first, period);
+        file << periodDesc << ","
+             << fixed << setprecision(2)
+             << data.totalWaterUsage << ","
+             << data.totalWaterFee << ","
+             << data.totalElectricUsage << ","
+             << data.totalElectricFee << ","
+             << data.totalGasUsage << ","
+             << data.totalGasFee << endl;
+    }
+    
+    file.close();
+    cout << "统计报表已导出到文件：" << filename << endl;
+}
+
+void UtilityManagementSystem::showStatisticsMenu() {
+    int choice;
+    do {
+        cout << "\n===== 统计报表 =====" << endl;
+        cout << "1. 月度用量统计" << endl;
+        cout << "2. 季度用量统计" << endl;
+        cout << "3. 年度用量统计" << endl;
+        cout << "0. 返回上级菜单" << endl;
+        cout << "请选择: ";
+        choice = safeInputInt();
+        
+        switch (choice) {
+            case 1:
+                generateStatistics(StatisticsPeriod::MONTHLY);
+                break;
+            case 2:
+                generateStatistics(StatisticsPeriod::QUARTERLY);
+                break;
+            case 3:
+                generateStatistics(StatisticsPeriod::YEARLY);
+                break;
+            case 0:
+                break;
+            default:
+                cout << "无效选择！" << endl;
         }
     } while (choice != 0);
 }

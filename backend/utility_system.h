@@ -201,6 +201,28 @@ public:
     string getUnit() const override { return "立方米"; }
 };
 
+// 统计周期枚举
+enum class StatisticsPeriod {
+    MONTHLY,    // 月度统计
+    QUARTERLY,  // 季度统计
+    YEARLY      // 年度统计
+};
+
+// 统计数据结构
+struct StatisticsData {
+    string period;                  // 统计周期
+    double totalWaterUsage;         // 总用水量
+    double totalElectricUsage;      // 总用电量
+    double totalGasUsage;           // 总用气量
+    double totalWaterFee;           // 总水费
+    double totalElectricFee;        // 总电费
+    double totalGasFee;             // 总煤气费
+    int recordCount;                // 记录数量
+    
+    StatisticsData() : totalWaterUsage(0), totalElectricUsage(0), totalGasUsage(0),
+                       totalWaterFee(0), totalElectricFee(0), totalGasFee(0), recordCount(0) {}
+};
+
 // 水电煤气管理系统类
 class UtilityManagementSystem {
 private:
@@ -214,6 +236,8 @@ private:
     User* findUserById(const string& userId);
     string generateMeterId(const string& prefix);
     string getCurrentDate();
+    string getPeriodKey(const string& date, StatisticsPeriod period);
+    string getPeriodDescription(const string& periodKey, StatisticsPeriod period);
     
 public:
     UtilityManagementSystem();
@@ -248,6 +272,12 @@ public:
     
     // 初始化测试数据
     void initTestData();
+    
+    // 统计报表功能
+    void showStatisticsMenu();
+    void generateStatistics(StatisticsPeriod period);
+    void displayStatistics(const map<string, StatisticsData>& stats, StatisticsPeriod period);
+    void exportStatisticsToFile(const map<string, StatisticsData>& stats, StatisticsPeriod period);
     
     // 主菜单
     void run();
