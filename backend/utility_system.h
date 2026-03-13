@@ -201,6 +201,15 @@ public:
     string getUnit() const override { return "立方米"; }
 };
 
+// 统计数据结构
+struct UsageStats {
+    double totalUsage;      // 总用量
+    double totalFee;        // 总费用
+    int recordCount;        // 记录条数
+    
+    UsageStats() : totalUsage(0), totalFee(0), recordCount(0) {}
+};
+
 // 水电煤气管理系统类
 class UtilityManagementSystem {
 private:
@@ -214,6 +223,25 @@ private:
     User* findUserById(const string& userId);
     string generateMeterId(const string& prefix);
     string getCurrentDate();
+    bool parseDate(const string& dateStr, int& year, int& month, int& day);
+    int getQuarter(int month);
+    
+    // 创建记录的辅助函数
+    WaterMeterRecord* createWaterRecord(const string& meterId, const string& userId, 
+                                        const string& lastDate, const string& currentDate,
+                                        double lastRead, double currentRead);
+    ElectricMeterRecord* createElectricRecord(const string& meterId, const string& userId, 
+                                              const string& lastDate, const string& currentDate,
+                                              double lastRead, double currentRead);
+    GasMeterRecord* createGasRecord(const string& meterId, const string& userId, 
+                                    const string& lastDate, const string& currentDate,
+                                    double lastRead, double currentRead);
+    
+    // 统计辅助函数
+    void collectStatsByPeriod(const vector<MeterRecord*>& records, int year, int month, 
+                              int quarter, bool isMonthly, bool isQuarterly, UsageStats& stats);
+    void displayStatsTable(const string& title, const UsageStats& waterStats, 
+                           const UsageStats& electricStats, const UsageStats& gasStats);
     
 public:
     UtilityManagementSystem();
@@ -248,6 +276,14 @@ public:
     
     // 初始化测试数据
     void initTestData();
+    
+    // 统计报表
+    void showStatisticsMenu();
+    void generateMonthlyReport();
+    void generateQuarterlyReport();
+    void generateAnnualReport();
+    void generateUserMonthlyReport();
+    void generateUserAnnualReport();
     
     // 主菜单
     void run();

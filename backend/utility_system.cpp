@@ -278,6 +278,77 @@ string UtilityManagementSystem::getCurrentDate() {
     return ss.str();
 }
 
+bool UtilityManagementSystem::parseDate(const string& dateStr, int& year, int& month, int& day) {
+    char dash1, dash2;
+    stringstream ss(dateStr);
+    if (ss >> year >> dash1 >> month >> dash2 >> day) {
+        if (dash1 == '-' && dash2 == '-' && year > 0 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+            return true;
+        }
+    }
+    return false;
+}
+
+int UtilityManagementSystem::getQuarter(int month) {
+    return (month - 1) / 3 + 1;
+}
+
+void UtilityManagementSystem::collectStatsByPeriod(const vector<MeterRecord*>& records, int year, int month, 
+                                                   int quarter, bool isMonthly, bool isQuarterly, UsageStats& stats) {
+    for (auto record : records) {
+        int rYear, rMonth, rDay;
+        if (parseDate(record->getCurrentReadDate(), rYear, rMonth, rDay)) {
+            if (rYear == year) {
+                if (isMonthly && rMonth == month) {
+                    stats.totalUsage += record->getUsage();
+                    stats.totalFee += record->getFee();
+                    stats.recordCount++;
+                } else if (isQuarterly && getQuarter(rMonth) == quarter) {
+                    stats.totalUsage += record->getUsage();
+                    stats.totalFee += record->getFee();
+                    stats.recordCount++;
+                } else if (!isMonthly && !isQuarterly) {  // 年度统计
+                    stats.totalUsage += record->getUsage();
+                    stats.totalFee += record->getFee();
+                    stats.recordCount++;
+                }
+            }
+        }
+    }
+}
+
+void UtilityManagementSystem::displayStatsTable(const string& title, const UsageStats& waterStats, 
+                                                 const UsageStats& electricStats, const UsageStats& gasStats) {
+    double totalAll = waterStats.totalFee + electricStats.totalFee + gasStats.totalFee;
+    int totalRecords = waterStats.recordCount + electricStats.recordCount + gasStats.recordCount;
+    
+    // 表格总宽度: 62 字符 (╠════════════╦═══════════════╬═══════════════╬═══════════════╣)
+    const int TABLE_WIDTH = 62;
+    const int CONTENT_WIDTH = TABLE_WIDTH - 2;  // 减去左右边框
+    
+    cout << "\n╔════════════════════════════════════════════════════════════╗" << endl;
+    cout << "║" << setw(CONTENT_WIDTH) << " " << "║" << endl;
+    cout << "║" << setw((CONTENT_WIDTH + static_cast<int>(title.length())) / 2) << right << title 
+         << setw((CONTENT_WIDTH - static_cast<int>(title.length()) + 1) / 2) << " " << "║" << endl;
+    cout << "║" << setw(CONTENT_WIDTH) << " " << "║" << endl;
+    cout << "╠════════════╦═══════════════╦═══════════════╦═══════════════╣" << endl;
+    cout << "║   项目     │     用量      │    费用(元)   │   记录条数    ║" << endl;
+    cout << "╠════════════╬═══════════════╬═══════════════╬═══════════════╣" << endl;
+    cout << "║   水费(吨) │ " << setw(13) << fixed << setprecision(2) << waterStats.totalUsage 
+         << " │ " << setw(13) << waterStats.totalFee 
+         << " │ " << setw(13) << waterStats.recordCount << " ║" << endl;
+    cout << "║   电费(度) │ " << setw(13) << electricStats.totalUsage 
+         << " │ " << setw(13) << electricStats.totalFee 
+         << " │ " << setw(13) << electricStats.recordCount << " ║" << endl;
+    cout << "║ 煤气费(m³) │ " << setw(13) << gasStats.totalUsage 
+         << " │ " << setw(13) << gasStats.totalFee 
+         << " │ " << setw(13) << gasStats.recordCount << " ║" << endl;
+    cout << "╠════════════╬═══════════════╬═══════════════╬═══════════════╣" << endl;
+    cout << "║   合计     │ -             │ " << setw(13) << totalAll
+         << " │ " << setw(13) << totalRecords << " ║" << endl;
+    cout << "╚════════════╩═══════════════╩═══════════════╩═══════════════╝" << endl;
+}
+
 void UtilityManagementSystem::addStaffUser() {
     cout << "\n===== 添加教工用户 =====" << endl;
     cout << "请输入用户ID: ";
@@ -794,6 +865,48 @@ void UtilityManagementSystem::modifyPriceStandard() {
     calculateAllFees();  // 重新计算所有费用
 }
 
+// 辅助函数：创建并计算水费记录
+WaterMeterRecord* UtilityManagementSystem::createWaterRecord(const string& meterId, const string& userId, 
+                                                             const string& lastDate, const string& currentDate,
+                                                             double lastRead, double currentRead) {
+    WaterMeterRecord* record = new WaterMeterRecord(meterId, userId, lastDate, currentDate, lastRead, currentRead);
+    User* user = findUserById(userId);
+    if (user) {
+        double price = priceStandard.getWaterPrice(user->getUserType());
+        double freeQuota = (user->getUserType() == UserType::STUDENT) ? priceStandard.getFreeWater() : 0;
+        record->setFee(user->calculateFee(record->getUsage(), price, freeQuota));
+    }
+    return record;
+}
+
+// 辅助函数：创建并计算电费记录
+ElectricMeterRecord* UtilityManagementSystem::createElectricRecord(const string& meterId, const string& userId, 
+                                                                   const string& lastDate, const string& currentDate,
+                                                                   double lastRead, double currentRead) {
+    ElectricMeterRecord* record = new ElectricMeterRecord(meterId, userId, lastDate, currentDate, lastRead, currentRead);
+    User* user = findUserById(userId);
+    if (user) {
+        double price = priceStandard.getElectricPrice(user->getUserType());
+        double freeQuota = (user->getUserType() == UserType::STUDENT) ? priceStandard.getFreeElectric() : 0;
+        record->setFee(user->calculateFee(record->getUsage(), price, freeQuota));
+    }
+    return record;
+}
+
+// 辅助函数：创建并计算煤气费记录
+GasMeterRecord* UtilityManagementSystem::createGasRecord(const string& meterId, const string& userId, 
+                                                         const string& lastDate, const string& currentDate,
+                                                         double lastRead, double currentRead) {
+    GasMeterRecord* record = new GasMeterRecord(meterId, userId, lastDate, currentDate, lastRead, currentRead);
+    User* user = findUserById(userId);
+    if (user) {
+        double price = priceStandard.getGasPrice(user->getUserType());
+        double freeQuota = (user->getUserType() == UserType::STUDENT) ? priceStandard.getFreeGas() : 0;
+        record->setFee(user->calculateFee(record->getUsage(), price, freeQuota));
+    }
+    return record;
+}
+
 void UtilityManagementSystem::initTestData() {
     // 检查是否已有数据
     if (!users.empty() || !waterRecords.empty() || !electricRecords.empty() || !gasRecords.empty()) {
@@ -831,106 +944,137 @@ void UtilityManagementSystem::initTestData() {
     users.push_back(new StudentUser("S004", "小丽", "202室", "15900004444", "2022001004", "学生公寓2号楼", 2));
     users.push_back(new StudentUser("S005", "小强", "301室", "15900005555", "2023001005", "学生公寓3号楼", 1));
     
-    // 添加水表记录
-    WaterMeterRecord* w1 = new WaterMeterRecord("W001001", "T001", "2025-12-01", "2026-01-01", 100.0, 108.5);
-    WaterMeterRecord* w2 = new WaterMeterRecord("W001002", "T002", "2025-12-01", "2026-01-01", 200.0, 206.0);
-    WaterMeterRecord* w3 = new WaterMeterRecord("W001003", "S001", "2025-12-01", "2026-01-01", 50.0, 55.0);
-    WaterMeterRecord* w4 = new WaterMeterRecord("W001004", "S002", "2025-12-01", "2026-01-01", 60.0, 62.0);
-    WaterMeterRecord* w5 = new WaterMeterRecord("W001005", "S003", "2025-12-01", "2026-01-01", 70.0, 78.0);
+    // ==================== 2025年数据 ====================
     
-    // 计算并设置水费
-    User* u1 = findUserById("T001");
-    w1->setFee(u1->calculateFee(w1->getUsage(), priceStandard.getWaterPrice(u1->getUserType()), 0));
+    // 2025年1月记录
+    waterRecords.push_back(createWaterRecord("W250101", "T001", "2024-12-01", "2025-01-01", 0.0, 10.0));
+    waterRecords.push_back(createWaterRecord("W250102", "T002", "2024-12-01", "2025-01-01", 0.0, 8.0));
+    waterRecords.push_back(createWaterRecord("W250103", "S001", "2024-12-01", "2025-01-01", 0.0, 5.0));
     
-    User* u2 = findUserById("T002");
-    w2->setFee(u2->calculateFee(w2->getUsage(), priceStandard.getWaterPrice(u2->getUserType()), 0));
+    electricRecords.push_back(createElectricRecord("E250101", "T001", "2024-12-01", "2025-01-01", 0.0, 150.0));
+    electricRecords.push_back(createElectricRecord("E250102", "T003", "2024-12-01", "2025-01-01", 0.0, 120.0));
+    electricRecords.push_back(createElectricRecord("E250103", "S001", "2024-12-01", "2025-01-01", 0.0, 40.0));
     
-    User* u3 = findUserById("S001");
-    w3->setFee(u3->calculateFee(w3->getUsage(), priceStandard.getWaterPrice(u3->getUserType()), 
-               priceStandard.getFreeWater()));
+    gasRecords.push_back(createGasRecord("G250101", "T002", "2024-12-01", "2025-01-01", 0.0, 20.0));
+    gasRecords.push_back(createGasRecord("G250102", "S002", "2024-12-01", "2025-01-01", 0.0, 8.0));
     
-    User* u4 = findUserById("S002");
-    w4->setFee(u4->calculateFee(w4->getUsage(), priceStandard.getWaterPrice(u4->getUserType()),
-               priceStandard.getFreeWater()));
+    // 2025年2月记录
+    waterRecords.push_back(createWaterRecord("W250201", "T001", "2025-01-01", "2025-02-01", 10.0, 18.5));
+    waterRecords.push_back(createWaterRecord("W250202", "T002", "2025-01-01", "2025-02-01", 8.0, 16.0));
+    waterRecords.push_back(createWaterRecord("W250203", "S001", "2025-01-01", "2025-02-01", 5.0, 10.0));
+    waterRecords.push_back(createWaterRecord("W250204", "S002", "2025-01-01", "2025-02-01", 0.0, 4.0));
     
-    User* u5 = findUserById("S003");
-    w5->setFee(u5->calculateFee(w5->getUsage(), priceStandard.getWaterPrice(u5->getUserType()),
-               priceStandard.getFreeWater()));
+    electricRecords.push_back(createElectricRecord("E250201", "T001", "2025-01-01", "2025-02-01", 150.0, 280.0));
+    electricRecords.push_back(createElectricRecord("E250202", "S001", "2025-01-01", "2025-02-01", 40.0, 75.0));
     
-    waterRecords.push_back(w1);
-    waterRecords.push_back(w2);
-    waterRecords.push_back(w3);
-    waterRecords.push_back(w4);
-    waterRecords.push_back(w5);
+    gasRecords.push_back(createGasRecord("G250201", "T002", "2025-01-01", "2025-02-01", 20.0, 35.0));
+    gasRecords.push_back(createGasRecord("G250202", "T004", "2025-01-01", "2025-02-01", 0.0, 15.0));
     
-    // 添加电表记录
-    ElectricMeterRecord* e1 = new ElectricMeterRecord("E001001", "T001", "2025-12-01", "2026-01-01", 1000.0, 1150.0);
-    ElectricMeterRecord* e2 = new ElectricMeterRecord("E001002", "T003", "2025-12-01", "2026-01-01", 800.0, 920.0);
-    ElectricMeterRecord* e3 = new ElectricMeterRecord("E001003", "S001", "2025-12-01", "2026-01-01", 500.0, 545.0);
-    ElectricMeterRecord* e4 = new ElectricMeterRecord("E001004", "S004", "2025-12-01", "2026-01-01", 300.0, 315.0);
-    ElectricMeterRecord* e5 = new ElectricMeterRecord("E001005", "S005", "2025-12-01", "2026-01-01", 400.0, 480.0);
+    // 2025年3月记录 (第一季度末)
+    waterRecords.push_back(createWaterRecord("W250301", "T001", "2025-02-01", "2025-03-01", 18.5, 25.0));
+    waterRecords.push_back(createWaterRecord("W250302", "T003", "2025-02-01", "2025-03-01", 0.0, 7.0));
+    waterRecords.push_back(createWaterRecord("W250303", "S003", "2025-02-01", "2025-03-01", 0.0, 6.0));
     
-    // 计算并设置电费
-    e1->setFee(u1->calculateFee(e1->getUsage(), priceStandard.getElectricPrice(u1->getUserType()), 0));
+    electricRecords.push_back(createElectricRecord("E250301", "T003", "2025-02-01", "2025-03-01", 120.0, 200.0));
+    electricRecords.push_back(createElectricRecord("E250302", "S004", "2025-02-01", "2025-03-01", 0.0, 18.0));
     
-    User* u6 = findUserById("T003");
-    e2->setFee(u6->calculateFee(e2->getUsage(), priceStandard.getElectricPrice(u6->getUserType()), 0));
+    gasRecords.push_back(createGasRecord("G250301", "S003", "2025-02-01", "2025-03-01", 0.0, 10.0));
+    gasRecords.push_back(createGasRecord("G250302", "T005", "2025-02-01", "2025-03-01", 0.0, 12.0));
     
-    e3->setFee(u3->calculateFee(e3->getUsage(), priceStandard.getElectricPrice(u3->getUserType()),
-               priceStandard.getFreeElectric()));
+    // 2025年4月记录 (第二季度开始)
+    waterRecords.push_back(createWaterRecord("W250401", "T001", "2025-03-01", "2025-04-01", 25.0, 33.0));
+    waterRecords.push_back(createWaterRecord("W250402", "T002", "2025-03-01", "2025-04-01", 16.0, 22.0));
     
-    User* u7 = findUserById("S004");
-    e4->setFee(u7->calculateFee(e4->getUsage(), priceStandard.getElectricPrice(u7->getUserType()),
-               priceStandard.getFreeElectric()));
+    electricRecords.push_back(createElectricRecord("E250401", "T001", "2025-03-01", "2025-04-01", 280.0, 400.0));
+    electricRecords.push_back(createElectricRecord("E250402", "S005", "2025-03-01", "2025-04-01", 0.0, 50.0));
     
-    User* u8 = findUserById("S005");
-    e5->setFee(u8->calculateFee(e5->getUsage(), priceStandard.getElectricPrice(u8->getUserType()),
-               priceStandard.getFreeElectric()));
+    gasRecords.push_back(createGasRecord("G250401", "T002", "2025-03-01", "2025-04-01", 35.0, 48.0));
     
-    electricRecords.push_back(e1);
-    electricRecords.push_back(e2);
-    electricRecords.push_back(e3);
-    electricRecords.push_back(e4);
-    electricRecords.push_back(e5);
+    // 2025年6月记录 (第二季度末)
+    waterRecords.push_back(createWaterRecord("W250601", "T001", "2025-05-01", "2025-06-01", 40.0, 50.0));
+    waterRecords.push_back(createWaterRecord("W250602", "S001", "2025-05-01", "2025-06-01", 18.0, 25.0));
     
-    // 添加煤气表记录
-    GasMeterRecord* g1 = new GasMeterRecord("G001001", "T002", "2025-12-01", "2026-01-01", 50.0, 65.0);
-    GasMeterRecord* g2 = new GasMeterRecord("G001002", "T004", "2025-12-01", "2026-01-01", 80.0, 92.0);
-    GasMeterRecord* g3 = new GasMeterRecord("G001003", "S002", "2025-12-01", "2026-01-01", 20.0, 28.0);
-    GasMeterRecord* g4 = new GasMeterRecord("G001004", "S003", "2025-12-01", "2026-01-01", 30.0, 42.0);
-    GasMeterRecord* g5 = new GasMeterRecord("G001005", "T005", "2025-12-01", "2026-01-01", 40.0, 48.0);
+    electricRecords.push_back(createElectricRecord("E250601", "T001", "2025-05-01", "2025-06-01", 550.0, 700.0));
+    electricRecords.push_back(createElectricRecord("E250602", "S001", "2025-05-01", "2025-06-01", 110.0, 150.0));
     
-    // 计算并设置煤气费
-    g1->setFee(u2->calculateFee(g1->getUsage(), priceStandard.getGasPrice(u2->getUserType()), 0));
+    gasRecords.push_back(createGasRecord("G250601", "T004", "2025-05-01", "2025-06-01", 30.0, 45.0));
     
-    User* u9 = findUserById("T004");
-    g2->setFee(u9->calculateFee(g2->getUsage(), priceStandard.getGasPrice(u9->getUserType()), 0));
+    // 2025年9月记录 (第三季度末)
+    waterRecords.push_back(createWaterRecord("W250901", "T001", "2025-08-01", "2025-09-01", 70.0, 82.0));
+    waterRecords.push_back(createWaterRecord("W250902", "T002", "2025-08-01", "2025-09-01", 50.0, 60.0));
     
-    g3->setFee(u4->calculateFee(g3->getUsage(), priceStandard.getGasPrice(u4->getUserType()),
-               priceStandard.getFreeGas()));
+    electricRecords.push_back(createElectricRecord("E250901", "T003", "2025-08-01", "2025-09-01", 450.0, 600.0));
     
-    g4->setFee(u5->calculateFee(g4->getUsage(), priceStandard.getGasPrice(u5->getUserType()),
-               priceStandard.getFreeGas()));
+    gasRecords.push_back(createGasRecord("G250901", "S002", "2025-08-01", "2025-09-01", 20.0, 28.0));
+    gasRecords.push_back(createGasRecord("G250902", "T005", "2025-08-01", "2025-09-01", 40.0, 52.0));
     
-    User* u10 = findUserById("T005");
-    g5->setFee(u10->calculateFee(g5->getUsage(), priceStandard.getGasPrice(u10->getUserType()), 0));
+    // 2025年12月记录 (第四季度末)
+    waterRecords.push_back(createWaterRecord("W251201", "T001", "2025-11-01", "2025-12-01", 95.0, 108.5));
+    waterRecords.push_back(createWaterRecord("W251202", "T002", "2025-11-01", "2025-12-01", 75.0, 86.0));
+    waterRecords.push_back(createWaterRecord("W251203", "S001", "2025-11-01", "2025-12-01", 40.0, 50.0));
+    waterRecords.push_back(createWaterRecord("W251204", "S002", "2025-11-01", "2025-12-01", 30.0, 36.0));
+    waterRecords.push_back(createWaterRecord("W251205", "S003", "2025-11-01", "2025-12-01", 35.0, 45.0));
     
-    gasRecords.push_back(g1);
-    gasRecords.push_back(g2);
-    gasRecords.push_back(g3);
-    gasRecords.push_back(g4);
-    gasRecords.push_back(g5);
+    electricRecords.push_back(createElectricRecord("E251201", "T001", "2025-11-01", "2025-12-01", 850.0, 1000.0));
+    electricRecords.push_back(createElectricRecord("E251202", "T003", "2025-11-01", "2025-12-01", 700.0, 800.0));
+    electricRecords.push_back(createElectricRecord("E251203", "S001", "2025-11-01", "2025-12-01", 200.0, 250.0));
+    electricRecords.push_back(createElectricRecord("E251204", "S004", "2025-11-01", "2025-12-01", 100.0, 130.0));
+    electricRecords.push_back(createElectricRecord("E251205", "S005", "2025-11-01", "2025-12-01", 150.0, 200.0));
+    
+    gasRecords.push_back(createGasRecord("G251201", "T002", "2025-11-01", "2025-12-01", 60.0, 75.0));
+    gasRecords.push_back(createGasRecord("G251202", "T004", "2025-11-01", "2025-12-01", 55.0, 70.0));
+    gasRecords.push_back(createGasRecord("G251203", "S002", "2025-11-01", "2025-12-01", 30.0, 38.0));
+    gasRecords.push_back(createGasRecord("G251204", "S003", "2025-11-01", "2025-12-01", 25.0, 38.0));
+    gasRecords.push_back(createGasRecord("G251205", "T005", "2025-11-01", "2025-12-01", 45.0, 55.0));
+    
+    // ==================== 2026年数据 ====================
+    
+    // 2026年1月记录
+    waterRecords.push_back(createWaterRecord("W260101", "T001", "2025-12-01", "2026-01-01", 108.5, 115.0));
+    waterRecords.push_back(createWaterRecord("W260102", "T002", "2025-12-01", "2026-01-01", 86.0, 94.0));
+    waterRecords.push_back(createWaterRecord("W260103", "S001", "2025-12-01", "2026-01-01", 50.0, 55.0));
+    waterRecords.push_back(createWaterRecord("W260104", "S002", "2025-12-01", "2026-01-01", 36.0, 40.0));
+    waterRecords.push_back(createWaterRecord("W260105", "S003", "2025-12-01", "2026-01-01", 45.0, 53.0));
+    
+    electricRecords.push_back(createElectricRecord("E260101", "T001", "2025-12-01", "2026-01-01", 1000.0, 1150.0));
+    electricRecords.push_back(createElectricRecord("E260102", "T003", "2025-12-01", "2026-01-01", 800.0, 920.0));
+    electricRecords.push_back(createElectricRecord("E260103", "S001", "2025-12-01", "2026-01-01", 250.0, 295.0));
+    electricRecords.push_back(createElectricRecord("E260104", "S004", "2025-12-01", "2026-01-01", 130.0, 145.0));
+    electricRecords.push_back(createElectricRecord("E260105", "S005", "2025-12-01", "2026-01-01", 200.0, 280.0));
+    
+    gasRecords.push_back(createGasRecord("G260101", "T002", "2025-12-01", "2026-01-01", 75.0, 90.0));
+    gasRecords.push_back(createGasRecord("G260102", "T004", "2025-12-01", "2026-01-01", 70.0, 82.0));
+    gasRecords.push_back(createGasRecord("G260103", "S002", "2025-12-01", "2026-01-01", 38.0, 46.0));
+    gasRecords.push_back(createGasRecord("G260104", "S003", "2025-12-01", "2026-01-01", 38.0, 50.0));
+    gasRecords.push_back(createGasRecord("G260105", "T005", "2025-12-01", "2026-01-01", 55.0, 63.0));
+    
+    // 2026年2月记录
+    waterRecords.push_back(createWaterRecord("W260201", "T001", "2026-01-01", "2026-02-01", 115.0, 125.0));
+    waterRecords.push_back(createWaterRecord("W260202", "T003", "2026-01-01", "2026-02-01", 50.0, 58.0));
+    
+    electricRecords.push_back(createElectricRecord("E260201", "T002", "2026-01-01", "2026-02-01", 500.0, 650.0));
+    electricRecords.push_back(createElectricRecord("E260202", "S002", "2026-01-01", "2026-02-01", 100.0, 125.0));
+    
+    gasRecords.push_back(createGasRecord("G260201", "T001", "2026-01-01", "2026-02-01", 30.0, 42.0));
+    gasRecords.push_back(createGasRecord("G260202", "S005", "2026-01-01", "2026-02-01", 10.0, 18.0));
     
     // 设置部分记录为已缴费
-    w1->setPaid(true);
-    e1->setPaid(true);
-    g5->setPaid(true);
+    for (size_t i = 0; i < waterRecords.size(); i += 3) {
+        waterRecords[i]->setPaid(true);
+    }
+    for (size_t i = 0; i < electricRecords.size(); i += 4) {
+        electricRecords[i]->setPaid(true);
+    }
+    for (size_t i = 0; i < gasRecords.size(); i += 5) {
+        gasRecords[i]->setPaid(true);
+    }
     
     cout << "测试数据初始化完成！" << endl;
     cout << "已添加 " << users.size() << " 个用户" << endl;
     cout << "已添加 " << waterRecords.size() << " 条水表记录" << endl;
     cout << "已添加 " << electricRecords.size() << " 条电表记录" << endl;
     cout << "已添加 " << gasRecords.size() << " 条煤气表记录" << endl;
+    cout << "数据覆盖时间: 2025年1月 - 2026年2月" << endl;
 }
 
 void UtilityManagementSystem::showMainMenu() {
@@ -942,7 +1086,8 @@ void UtilityManagementSystem::showMainMenu() {
     cout << "║  3. 费用查询                                              ║" << endl;
     cout << "║  4. 缴费管理                                              ║" << endl;
     cout << "║  5. 收费标准                                              ║" << endl;
-    cout << "║  6. 初始化测试数据                                        ║" << endl;
+    cout << "║  6. 统计报表                                              ║" << endl;
+    cout << "║  7. 初始化测试数据                                        ║" << endl;
     cout << "║  0. 退出系统                                              ║" << endl;
     cout << "╚══════════════════════════════════════════════════════════╝" << endl;
     cout << "请选择: ";
@@ -1032,6 +1177,220 @@ void UtilityManagementSystem::showPaymentMenu() {
     } while (choice != 0);
 }
 
+void UtilityManagementSystem::showStatisticsMenu() {
+    int choice;
+    do {
+        cout << "\n===== 统计报表 =====" << endl;
+        cout << "1. 月度用量统计报表" << endl;
+        cout << "2. 季度用量统计报表" << endl;
+        cout << "3. 年度用量统计报表" << endl;
+        cout << "4. 用户月度用量统计" << endl;
+        cout << "5. 用户年度用量统计" << endl;
+        cout << "0. 返回上级菜单" << endl;
+        cout << "请选择: ";
+        choice = safeInputInt();
+        
+        switch (choice) {
+            case 1: generateMonthlyReport(); break;
+            case 2: generateQuarterlyReport(); break;
+            case 3: generateAnnualReport(); break;
+            case 4: generateUserMonthlyReport(); break;
+            case 5: generateUserAnnualReport(); break;
+            case 0: break;
+            default: cout << "无效选择！" << endl;
+        }
+    } while (choice != 0);
+}
+
+void UtilityManagementSystem::generateMonthlyReport() {
+    cout << "\n===== 月度用量统计报表 =====" << endl;
+    cout << "请输入年份: ";
+    int year = safeInputInt();
+    cout << "请输入月份(1-12): ";
+    int month = safeInputInt();
+    
+    if (month < 1 || month > 12) {
+        cout << "月份输入无效！" << endl;
+        return;
+    }
+    
+    UsageStats waterStats, electricStats, gasStats;
+    collectStatsByPeriod(waterRecords, year, month, 0, true, false, waterStats);
+    collectStatsByPeriod(electricRecords, year, month, 0, true, false, electricStats);
+    collectStatsByPeriod(gasRecords, year, month, 0, true, false, gasStats);
+    
+    stringstream title;
+    title << year << "年" << month << "月用量统计";
+    displayStatsTable(title.str(), waterStats, electricStats, gasStats);
+}
+
+void UtilityManagementSystem::generateQuarterlyReport() {
+    cout << "\n===== 季度用量统计报表 =====" << endl;
+    cout << "请输入年份: ";
+    int year = safeInputInt();
+    cout << "请输入季度(1-4): ";
+    int quarter = safeInputInt();
+    
+    if (quarter < 1 || quarter > 4) {
+        cout << "季度输入无效！" << endl;
+        return;
+    }
+    
+    UsageStats waterStats, electricStats, gasStats;
+    collectStatsByPeriod(waterRecords, year, 0, quarter, false, true, waterStats);
+    collectStatsByPeriod(electricRecords, year, 0, quarter, false, true, electricStats);
+    collectStatsByPeriod(gasRecords, year, 0, quarter, false, true, gasStats);
+    
+    stringstream title;
+    title << year << "年第" << quarter << "季度用量统计";
+    displayStatsTable(title.str(), waterStats, electricStats, gasStats);
+}
+
+void UtilityManagementSystem::generateAnnualReport() {
+    cout << "\n===== 年度用量统计报表 =====" << endl;
+    cout << "请输入年份: ";
+    int year = safeInputInt();
+    
+    UsageStats waterStats, electricStats, gasStats;
+    collectStatsByPeriod(waterRecords, year, 0, 0, false, false, waterStats);
+    collectStatsByPeriod(electricRecords, year, 0, 0, false, false, electricStats);
+    collectStatsByPeriod(gasRecords, year, 0, 0, false, false, gasStats);
+    
+    stringstream title;
+    title << year << "年年度用量统计";
+    displayStatsTable(title.str(), waterStats, electricStats, gasStats);
+}
+
+void UtilityManagementSystem::generateUserMonthlyReport() {
+    cout << "\n===== 用户月度用量统计 =====" << endl;
+    cout << "请输入用户ID: ";
+    string userId = safeInputString();
+    
+    User* user = findUserById(userId);
+    if (!user) {
+        cout << "用户不存在！" << endl;
+        return;
+    }
+    
+    cout << "请输入年份: ";
+    int year = safeInputInt();
+    cout << "请输入月份(1-12): ";
+    int month = safeInputInt();
+    
+    if (month < 1 || month > 12) {
+        cout << "月份输入无效！" << endl;
+        return;
+    }
+    
+    UsageStats waterStats, electricStats, gasStats;
+    
+    // 过滤用户记录
+    for (auto record : waterRecords) {
+        if (record->getUserId() == userId) {
+            int rYear, rMonth, rDay;
+            if (parseDate(record->getCurrentReadDate(), rYear, rMonth, rDay)) {
+                if (rYear == year && rMonth == month) {
+                    waterStats.totalUsage += record->getUsage();
+                    waterStats.totalFee += record->getFee();
+                    waterStats.recordCount++;
+                }
+            }
+        }
+    }
+    
+    for (auto record : electricRecords) {
+        if (record->getUserId() == userId) {
+            int rYear, rMonth, rDay;
+            if (parseDate(record->getCurrentReadDate(), rYear, rMonth, rDay)) {
+                if (rYear == year && rMonth == month) {
+                    electricStats.totalUsage += record->getUsage();
+                    electricStats.totalFee += record->getFee();
+                    electricStats.recordCount++;
+                }
+            }
+        }
+    }
+    
+    for (auto record : gasRecords) {
+        if (record->getUserId() == userId) {
+            int rYear, rMonth, rDay;
+            if (parseDate(record->getCurrentReadDate(), rYear, rMonth, rDay)) {
+                if (rYear == year && rMonth == month) {
+                    gasStats.totalUsage += record->getUsage();
+                    gasStats.totalFee += record->getFee();
+                    gasStats.recordCount++;
+                }
+            }
+        }
+    }
+    
+    user->display();
+    stringstream title;
+    title << user->getName() << " - " << year << "年" << month << "月用量统计";
+    displayStatsTable(title.str(), waterStats, electricStats, gasStats);
+}
+
+void UtilityManagementSystem::generateUserAnnualReport() {
+    cout << "\n===== 用户年度用量统计 =====" << endl;
+    cout << "请输入用户ID: ";
+    string userId = safeInputString();
+    
+    User* user = findUserById(userId);
+    if (!user) {
+        cout << "用户不存在！" << endl;
+        return;
+    }
+    
+    cout << "请输入年份: ";
+    int year = safeInputInt();
+    
+    UsageStats waterStats, electricStats, gasStats;
+    
+    for (auto record : waterRecords) {
+        if (record->getUserId() == userId) {
+            int rYear, rMonth, rDay;
+            if (parseDate(record->getCurrentReadDate(), rYear, rMonth, rDay)) {
+                if (rYear == year) {
+                    waterStats.totalUsage += record->getUsage();
+                    waterStats.totalFee += record->getFee();
+                    waterStats.recordCount++;
+                }
+            }
+        }
+    }
+    
+    for (auto record : electricRecords) {
+        if (record->getUserId() == userId) {
+            int rYear, rMonth, rDay;
+            if (parseDate(record->getCurrentReadDate(), rYear, rMonth, rDay)) {
+                if (rYear == year) {
+                    electricStats.totalUsage += record->getUsage();
+                    electricStats.totalFee += record->getFee();
+                    electricStats.recordCount++;
+                }
+            }
+        }
+    }
+    
+    for (auto record : gasRecords) {
+        if (record->getUserId() == userId) {
+            int rYear, rMonth, rDay;
+            if (parseDate(record->getCurrentReadDate(), rYear, rMonth, rDay)) {
+                if (rYear == year) {
+                    gasStats.totalUsage += record->getUsage();
+                    gasStats.totalFee += record->getFee();
+                    gasStats.recordCount++;
+                }
+            }
+        }
+    }
+    
+    user->display();
+    stringstream title;
+    title << user->getName() << " - " << year << "年年度用量统计";
+    displayStatsTable(title.str(), waterStats, electricStats, gasStats);
+}
+
 void UtilityManagementSystem::run() {
     int choice;
     
@@ -1057,7 +1416,8 @@ void UtilityManagementSystem::run() {
                     if (modify == 1) modifyPriceStandard();
                 }
                 break;
-            case 6: initTestData(); break;
+            case 6: showStatisticsMenu(); break;
+            case 7: initTestData(); break;
             case 0:
                 cout << "\n感谢使用，再见！" << endl;
                 break;
